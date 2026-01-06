@@ -39,46 +39,49 @@ V tejto časti navrhneme náš dimenzionálny model v štruktúre star schémy. 
 
 ### DIM_PROVIDER  
 Túto tabuľku sme vytvorili kombináciou dát zo zdrojových tabuliek `PROVIDER_REFERENCES` a `ALL_RATES` ->
-- `PROVIDER_ID` (**PK**): Unikátne číslo každého záznamu.
-- `PROVIDER_GROUP_ID`: Pôvodné ID zo zdroja (náš spojovací kľúč).
-- `PROVIDER_NAME`: Názov nemocnice (zo zdroja PROVIDER_REFERENCES).
-- `PROVIDER_TIN`: Daňové identifikačné číslo (zo zdroja PROVIDER_REFERENCES).
-- `CITY`: Mesto (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
-- `STATE`: Štát (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
+- `PROVIDER_ID`(**INT**)(**PK**): Unikátne číslo každého záznamu.
+- `PROVIDER_GROUP_ID`(**INT**): Pôvodné ID zo zdroja (náš spojovací kľúč).
+- `PROVIDER_NAME`(**VARCHAR(128)**): Názov nemocnice (zo zdroja PROVIDER_REFERENCES).
+- `NPI`(**VARCHAR(64)**): Daňové identifikačné číslo (zo zdroja PROVIDER_REFERENCES).
+- `ADDRESS`(**VARCHAR(254)**): Adresa (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
+- `CITY`(**VARCHAR(128)**: Mesto (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
+- `STATE`(**VARCHAR(128)**: Štát (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
+- `ZIP`(**VARCHAR(128)**: ZIP/PSČ (vytiahnuté z ALL_RATES podľa `PROVIDER_GROUP_ID`).
   
 **SCD**: Typ 1 - Ak sa zmení adresa alebo názov nemocnice, zväčša nás ten predošlí údaj nezaujíma a je pre nás dôležitý iba ten aktuálny.
 
 
 ### DIM_SERVICE  
 Túto tabuľku sme vytvorili zo zdrojovej tabuľky `SERVICE_DEFINITIONS` ->
-- `SERVICE_ID` (**PK**): Unikátne číslo každého záznamu.
-- `SERVICE_DEFINITION_ID`: Pôvodné ID zo zdroja.
-- `BILLING_CODE`: Kód zákroku.
-- `BILLING_CODE_TYPE`: Typ kódu.
-- `NAME`: Názov lekárskeho úkonu.
-- `DESCRIPTION`: Popis lekárskeho úkonu.
+- `SERVICE_ID`(**INT**) (**PK**): Unikátne číslo každého záznamu.
+- `SERVICE_DEFINITION_ID`(**INT**): Pôvodné ID zo zdroja.
+- `BILLING_CODE`(**VARCHAR(64)**): Kód zákroku.
+- `BILLING_CODE_TYPE`(**VARCHAR(64)**): Typ kódu.
+- `NAME`(**VARCHAR(128)**): Názov lekárskeho úkonu.
+- `DESCRIPTION`(**VARCHAR(1024)**): Popis lekárskeho úkonu.
 
 **SCD**: Typ 0 - Kódy a názvy zákrokov sú fixné medicínske štandardy.
 
 
 ### DIM_PAYER  
 Túto tabuľku sme vytvorili kombináciou stĺpcov z `NEGOTIATED_RATES` a `METRICS` ->
-- `PAYER_ID` (**PK**): Unikátne číslo každého záznamu.
-- `PAYER_NAME`: Názov poisťovne.
-- `SEGMENT`: Typ trhu (napr. Individual, Medicare - vytiahnuté z `METRICS`).
-- `MARKET`: Región pôsobenia (vytiahnuté z `METRICS`).
+- `PAYER_ID`(**INT**) (**PK**): Unikátne číslo každého záznamu.
+- `PAYER`(**VARCHAR(128)**): Názov poisťovne.
+- `SEGMENT`(**VARCHAR(128)**): Typ trhu (napr. Individual, Medicare - vytiahnuté z `METRICS`).
+- `MARKET`(**VARCHAR(128)**): Región pôsobenia (vytiahnuté z `METRICS`).
+- `NEGOTIATION_ARRANGEMENT`(**VARCHAR(64)**): Spôsob výpočtu ceny, napríklad či ide o fixnú sumu alebo o percentuálnu zľavu.
 
 **SCD**: Typ 1 - Rovnaký prístup ako v prípade nemocnice.
 
 
 ### DIM_DATE  
 Túto tabuľku sme vytvorili, aby sme mohli ceny a ich platnosť sledovať v čase -> 
-- `DATE_ID` (**PK**): Unikátne číslo každého záznamu.
-- `DATE`: Dátum.
-- `YEAR`: Rok.
-- `QUARTER`: Kvartál (Q1 – Q4).
-- `MONTH`: Názov mesiaca.
-- `IS_WEEKEND`: Stĺpec, ktorý hovorí o tom, či sa jedná o víkend.
+- `DATE_ID`(**INT**) (**PK**): Unikátne číslo každého záznamu.
+- `DATE`(**DATETIME**): Dátum.
+- `YEAR`(**INT**): Rok.
+- `QUARTER`(**INT**): Kvartál (Q1 – Q4).
+- `MONTH`(**VARCHAR(64)**): Názov mesiaca.
+- `MONTH_NUM`(**INT**): Číselné poradie mesiaca vrámci roka.
 
 **SCD**: Typ 0 - Kalendár sa nemení, 1. január bude vždy 1. január.
 
@@ -86,20 +89,29 @@ Túto tabuľku sme vytvorili, aby sme mohli ceny a ich platnosť sledovať v ča
 
 ### FACT_NEGOTIATED_RATES  
 Táto tabuľka spája všetky dimenzie s konkrétnymi dohodnutými cenami. Každý riadok predstavuje jednu unikátnu cenu za konkrétnu službu v danej nemocnici.
-- `FACT_ID` (**PK**): Unikátne číslo každého záznamu.
-- `PROVIDER_ID`: Odkaz na nemocnicu (prepojené na `DIM_PROVIDER`).
-- `SERVICE_ID`: Odkaz na lekársky úkon (prepojené na `DIM_SERVICE`).
-- `PAYER_ID`: Odkaz na poisťovňu (prepojené na `DIM_PAYER`).
-- `EXPIRATION_DATE_ID`: Odkaz na dátum expirácie ceny (prepojené na `DIM_DATE`).
-- `NEGOTIATED_RATE`: Samotná vyjednaná suma, ktorú poisťovňa platí nemocnici.
+- `FACT_ID`(**INT**) (**PK**): Unikátne číslo každého záznamu.
+- `PROVIDER_ID`(**INT**): Odkaz na nemocnicu (prepojené na `DIM_PROVIDER`).
+- `SERVICE_ID`(**INT**): Odkaz na lekársky úkon (prepojené na `DIM_SERVICE`).
+- `PAYER_ID`(**INT**): Odkaz na poisťovňu (prepojené na `DIM_PAYER`).
+- `EXPIRATION_DATE_ID`(**INT**): Odkaz na dátum expirácie ceny (prepojené na `DIM_DATE`).
+- `NEGOTIATED_RATE`(**NUMBER(15,3)**): Samotná vyjednaná suma, ktorú poisťovňa platí nemocnici.
 WINDOW FUNCTIONS ->
-- `RATE_ORDER`: Tento stĺpec hovorí o tom v akom poradí je konkrétna cena v porovnaní s ostatnými pre tú istú službu.
+- `RATE_ORDER`(**INT**): Tento stĺpec hovorí o tom v akom poradí je konkrétna cena v porovnaní s ostatnými pre tú istú službu.
 
   ->`RANK() OVER (PARTITION BY SERVICE_ID ORDER BY NEGOTIATED_RATE ASC)`
   
-- `MARKET_AVG`: Tento stĺpec zobrazuje priemernú cenu na celom trhu pre danú službu.
+- `MARKET_AVG`(**NUMBER(15,3)**): Tento stĺpec zobrazuje priemernú cenu na celom trhu pre danú službu.
 
   ->`AVG(NEGOTIATED_RATE) OVER (PARTITION BY SERVICE_ID)`
+
+
+  ---
+
+<p align="center">
+  <img width="940" height="688" alt="ERD_dim_model" src="https://github.com/user-attachments/assets/1507ece0-4932-4ff8-a653-3835d971e55b" />
+  <br>
+  <strong>Obrázok 2</strong> ERD dimenzionálneho modelu
+</p>
 
 
 
