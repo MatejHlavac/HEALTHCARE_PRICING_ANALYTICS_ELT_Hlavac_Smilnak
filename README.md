@@ -94,6 +94,7 @@ Táto tabuľka spája všetky dimenzie s konkrétnymi dohodnutými cenami. Každ
 - `SERVICE_ID`(**INT**): Odkaz na lekársky úkon (prepojené na `DIM_SERVICE`).
 - `PAYER_ID`(**INT**): Odkaz na poisťovňu (prepojené na `DIM_PAYER`).
 - `EXPIRATION_DATE_ID`(**INT**): Odkaz na dátum expirácie ceny (prepojené na `DIM_DATE`).
+- `CLAIM_COUNT`(**INT**): Celkový počet zrealizovaných medicínskych prípadov pre danú kombináciu poskytovateľa a služby (údaj vytiahnutý z tabuľky `VOLUME`).
 - `NEGOTIATED_RATE`(**NUMBER(15,3)**): Samotná vyjednaná suma, ktorú poisťovňa platí nemocnici.
 WINDOW FUNCTIONS ->
 - `RATE_ORDER`(**INT**): Tento stĺpec hovorí o tom v akom poradí je konkrétna cena v porovnaní s ostatnými pre tú istú službu.
@@ -108,10 +109,11 @@ WINDOW FUNCTIONS ->
   ---
 
 <p align="center">
-  <img width="940" height="688" alt="ERD_dim_model" src="https://github.com/user-attachments/assets/1507ece0-4932-4ff8-a653-3835d971e55b" />
+  <img width="940" height="688" alt="ERD_dim_model" src="https://github.com/user-attachments/assets/e58f74b1-154b-4ad9-aa60-2a442e73b9b1" />
   <br>
   <strong>Obrázok 2</strong> ERD dimenzionálneho modelu
 </p>
+
 
 
 
