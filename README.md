@@ -165,3 +165,176 @@ SELECT COUNT(*) AS pocet_riadkov FROM STAGE_VOLUME;
 ```
 ---
 
+### 2. Load
+V tejto fáze sme dáta zo staging tabuliek preniesli do finálneho multidimenzionálneho modelu. V rámci architektúry ELT sme surové dáta fyzicky usporiadali do štruktúry star schémy.
+
+
+## Dimenzia DIM_PROVIDER  
+**Vytvorenie tabuľky:**
+```sql
+CREATE OR REPLACE TABLE DIM_PROVIDER (
+    PROVIDER_ID INT IDENTITY(1,1) PRIMARY KEY,
+    NPI VARCHAR(64),
+    PROVIDER_GROUP_ID VARCHAR(128),
+    PROVIDER_NAME VARCHAR(256),
+    ADDRESS VARCHAR(256),
+    CITY VARCHAR(128),
+    STATE VARCHAR(128),
+    ZIP VARCHAR(128)
+);
+```
+
+
+**Vloženie dát do tabuľky:**
+```sql
+INSERT INTO DIM_PROVIDER (NPI, PROVIDER_GROUP_ID, PROVIDER_NAME, ADDRESS, CITY, STATE, ZIP)
+SELECT DISTINCT 
+    NPI, 
+    PROVIDER_GROUP_ID,
+    PROVIDER_NAME, 
+    ADDRESS, 
+    CITY, 
+    STATE, 
+    ZIP
+FROM STAGE_ALL_RATES
+WHERE NPI IS NOT NULL;
+```
+Údaje sme čerpali priamo zo staging tabuľky `STAGE_ALL_RATES`, ktorá obsahovala kompletné informácie o názvoch aj lokalitách poskytovateľov.
+
+---
+
+## Dimenzia DIM_PAYER:  
+**Vytvorenie tabuľky:**
+```sql
+CREATE OR REPLACE TABLE DIM_PAYER (
+    PAYER_ID INT IDENTITY(1,1) PRIMARY KEY,
+    PAYER VARCHAR(128),
+    NEGOTIATION_ARRANGEMENT VARCHAR(64)
+);
+```
+
+
+**Vloženie dát do tabuľky:**
+```sql
+INSERT INTO DIM_PAYER (PAYER, NEGOTIATION_ARRANGEMENT)
+SELECT DISTINCT 
+    PAYER, 
+    NEGOTIATION_ARRANGEMENT
+FROM STAGE_ALL_RATES
+WHERE PAYER IS NOT NULL;
+```
+Údaje sme extrahovali z tabuľky `STAGE_ALL_RATES`.
+
+---
+
+## Dimenzia DIM_SERVICE:  
+**Vytvorenie tabuľky:**
+```sql
+CREATE OR REPLACE TABLE DIM_SERVICE (
+    SERVICE_ID INT IDENTITY(1,1) PRIMARY KEY,
+    SERVICE_DEFINITION_ID INT,
+    BILLING_CODE VARCHAR(64),
+    BILLING_CODE_TYPE VARCHAR(64),
+    NAME VARCHAR(128),
+    DESCRIPTION VARCHAR(1024)
+);
+```
+
+
+**Vloženie dát do tabuľky:**
+```sql
+INSERT INTO DIM_SERVICE (SERVICE_DEFINITION_ID, BILLING_CODE, BILLING_CODE_TYPE, NAME, DESCRIPTION)
+SELECT DISTINCT
+    SERVICE_DEFINITION_ID,
+    BILLING_CODE,
+    BILLING_CODE_TYPE,
+    NAME,
+    DESCRIPTION
+FROM STAGE_SERVICE_DEFINITIONS
+WHERE SERVICE_DEFINITION_ID IS NOT NULL;
+```
+
+---
+
+## Dimenzia DIM_DATE:
+**Vytvorenie tabuľky:**
+```sql
+CREATE OR REPLACE TABLE DIM_DATE (
+    DATE_ID INT IDENTITY(1,1) PRIMARY KEY,
+    DATE DATETIME,
+    YEAR INT,
+    QUARTER INT,
+    MONTH VARCHAR(64),
+    MONTH_NUM INT
+);
+```
+
+
+**Vloženie dát do tabuľky:**
+```sql
+INSERT INTO DIM_DATE (DATE, YEAR, QUARTER, MONTH, MONTH_NUM)
+SELECT DISTINCT
+    DATE(EXPIRATION_DATE) AS DATE,
+    YEAR(EXPIRATION_DATE) AS YEAR,
+    CEIL(MONTH(EXPIRATION_DATE)/3.0) AS QUARTER,
+    TO_CHAR(EXPIRATION_DATE, 'Month') AS MONTH,
+    MONTH(EXPIRATION_DATE) AS MONTH_NUM
+FROM STAGE_NEGOTIATED_RATES
+WHERE EXPIRATION_DATE IS NOT NULL;
+```
+Táto tabuľka slúži na sledovanie dátumov expirácie cien, čo umožňuje presne určiť, ktoré zmluvné podmienky sú v danom momente aktuálne.
+
+
+V každej tabuľke sme si vytvorili vlastné ID pomocou príkazu `IDENTITY`. Tento príkaz hovorí databáze, aby za nás automaticky generovala unikátne poradové čísla pre každý nový riadok, ktorý do tabuľky vložíme. Pre databázu je oveľa jednoduchšie a rýchlejšie spájať tabuľky cez jednoduché čísla než cez dlhé texty (ako sú mená poisťovní alebo NPI kódy).
+
+
+## Faktová tabuľka: FACT_NEGOTIATIONS_RATE
+
+Faktová tabuľka je najdôležitejšou časťou nášho dátového skladu. Zatiaľ čo v dimenziách máme len zoznamy, tu sa nachádzajú samotné čísla a výsledky, ktoré chceme analyzovať.
+
+**Vytvorenie tabuľky:**
+```sql
+CREATE OR REPLACE TABLE FACT_NEGOTIATIONS_RATE (
+    FACT_RATE_ID INT AUTOINCREMENT PRIMARY KEY,
+    PROVIDER_ID INT NOT NULL,
+    PAYER_ID INT NOT NULL,
+    SERVICE_ID INT NOT NULL,
+    EXPIRATION_DATE_ID INT NOT NULL,
+    NEGOTIATED_RATE DECIMAL(15,3),
+    RATE_ORDER INT,
+    MARKET_AVG DECIMAL(15,3)
+);
+```
+
+**Vloženie dát do tabuľky:**
+```sql
+INSERT INTO FACT_NEGOTIATIONS_RATE (
+    PROVIDER_ID,
+    PAYER_ID,
+    SERVICE_ID,
+    EXPIRATION_DATE_ID,
+    NEGOTIATED_RATE,
+    RATE_ORDER,
+    MARKET_AVG
+)
+SELECT
+    dp.PROVIDER_ID,
+    dpa.PAYER_ID,
+    ds.SERVICE_ID,
+    dd.DATE_ID,
+    nr.NEGOTIATED_RATE,
+    RANK() OVER (PARTITION BY ds.SERVICE_ID ORDER BY nr.NEGOTIATED_RATE ASC),
+    AVG(nr.NEGOTIATED_RATE) OVER (PARTITION BY ds.SERVICE_ID)
+FROM STAGE_NEGOTIATED_RATES nr
+JOIN DIM_PROVIDER dp 
+    ON nr.PROVIDER_GROUP_ID = dp.PROVIDER_GROUP_ID
+JOIN DIM_PAYER dpa 
+    ON nr.PAYER = dpa.PAYER
+JOIN DIM_SERVICE ds 
+    ON nr.SERVICE_DEFINITION_ID = ds.SERVICE_DEFINITION_ID
+JOIN DIM_DATE dd 
+    ON CAST(nr.EXPIRATION_DATE AS DATE) = CAST(dd.DATE AS DATE);
+```
+
+Aby sme do faktov dostali správne ID čísla, prepojili sme staging tabuľku s našimi dimenziami. Napríklad sme povedali databáze: „Nájdi mi v dimenzii poskytovateľov ID pre nemocnicu, ktorá má tento konkrétny Group ID“.
+
