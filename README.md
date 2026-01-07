@@ -338,3 +338,31 @@ JOIN DIM_DATE dd
 
 Aby sme do faktov dostali správne ID čísla, prepojili sme staging tabuľku s našimi dimenziami. Napríklad sme povedali databáze: „Nájdi mi v dimenzii poskytovateľov ID pre nemocnicu, ktorá má tento konkrétny Group ID“.
 
+### 3. Transform
+
+**Čistenie dát a technické úpravy**  
+**Pretypovanie (Casting):** Pri finančných hodnotách sme použili typ `DECIMAL(15,3)`, pre presnosť na tri desatinné miesta. Pri dátumoch sme využili funkciu `CAST(... AS DATE)`, aby sme zjednotili formáty a odstránili nepotrebnú časovú zložku.
+**Filtrovanie NULL hodnôt:** Pomocou podmienky `WHERE ... IS NOT NULL` sme zo spracovania vylúčili neúplné záznamy, ktoré by inak znehodnotili výslednú analýzu.
+**Deduplikácia:** Pôvodné dáta obsahovali množstvo opakujúcich sa záznamov. Použitím príkazu `SELECT DISTINCT` sme vyfiltrovali unikátne záznamy pre naše dimenzie, čím sme znížili objem dát a zvýšili prehľadnosť.
+
+
+**SCD typy**  
+Pre každú dimenziu sme zvolili vhodný prístup k správe zmien:
+
+**SCD Typ 0 (Fixné):** Použili sme pre `DIM_SERVICE` a `DIM_DATE`. Tieto údaje (názvy lekárskych kódov alebo kalendárne dni) sme považovali za nemenné.  
+**SCD Typ 1 (Aktuálne):** Použili sme pre `DIM_PROVIDER` a `DIM_PAYER`. Ak sa napríklad zmení adresa nemocnice alebo názov poisťovne, starý údaj sa jednoducho prepíše novým. Naším cieľom bolo mať v reporte vždy aktuálne informácie o subjektoch.
+
+
+**Window Functions**  
+Najdôležitejšou časťou transformácie vo faktovej tabuľke bolo použitie Window Functions. Tie nám umožnili obohatiť každý riadok o dôležitý kontext bez zložitého zoskupovania dát:
+
+1.  **Poradie cien (RANK):**
+    Pomocou `RANK() OVER (PARTITION BY ds.SERVICE_ID ORDER BY nr.NEGOTIATED_RATE ASC)` sme každému poskytovateľovi priradili poradie v rámci konkrétnej služby.
+    **Význam:** Používateľ hneď uvidí, kto je pre daný zákrok najlacnejší (poradie 1).
+2.  **Trhový priemer (AVG):**
+    Pomocou `AVG(nr.NEGOTIATED_RATE) OVER (PARTITION BY ds.SERVICE_ID)` sme vypočítali priemernú cenu služby naprieč celým trhom.
+    **Význam:** To nám umožňuje okamžite porovnať konkrétnu cenu s priemerom danej služby v jednom riadku.
+
+Tieto transformácie sme vykonali priamo počas nahrávania dát.
+
+
